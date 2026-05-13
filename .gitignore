@@ -1,0 +1,26 @@
+# Vector store
+chroma_db/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+.pytest_cache/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Env
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db

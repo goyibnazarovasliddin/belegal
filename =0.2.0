@@ -1,0 +1,6 @@
+Defaulting to user installation because normal site-packages is not writeable
+ERROR: Could not find a version that satisfies the requirement langchain-openai (from versions: none)
+
+[notice] A new release of pip is available: 25.3 -> 26.1.1
+[notice] To update, run: C:\Users\user\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\python.exe -m pip install --upgrade pip
+ERROR: No matching distribution found for langchain-openai

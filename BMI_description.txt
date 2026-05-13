@@ -1,0 +1,457 @@
+================================================================
+BITIRUV MALAKAVIY ISHI UCHUN LOYIHA TAVSIFI
+ПРОЕКТ ДЛЯ НАПИСАНИЯ ДИПЛОМНОЙ РАБОТЫ
+================================================================
+
+LOYIHA NOMI: BeLegal — O'zbekiston Respublikasi Huquqiy Yordamchisi
+(AI-powered Legal Assistant for Uzbekistan Law)
+
+================================================================
+1. LOYIHA HAQIDA UMUMIY MA'LUMOT
+================================================================
+
+BeLegal — O'zbekiston Respublikasi qonunchiligiga asoslangan sun'iy
+intellekt yordamida ishlaydigan huquqiy ma'lumot tizimi. Platforma
+foydalanuvchilarga oddiy tilda huquqiy savol berib, javobni tegishli
+qonun moddalari bilan asoslangan holda olish imkonini beradi.
+
+Muammo: Ko'pchilik fuqarolar huquqiy bilimdan mahrum, advokatga
+murojaat qilish qimmat, qonun matnlari esa murakkab va tushunarsi z tilda
+yozilgan. Huquqiy savodxonlik darajasi past bo'lgani uchun fuqarolar
+o'z huquqlarini bilmay, ulardan foydalana olmaydi.
+
+Yechim: BeLegal sun'iy intellekt yordamida qonun matnlarini tahlil
+qilib, foydalanuvchi savoliga aniq va moddalar bilan asoslangan
+javob beradi. Bu advokatni almashtirishdan ko'ra, fuqarolarga boshlang'ich
+huquqiy savodxonlik berishni maqsad qiladi.
+
+================================================================
+2. TEXNIK ARXITEKTURA
+================================================================
+
+Loyiha ikki qismdan iborat: Backend (server tomoni) va Frontend
+(foydalanuvchi interfeysi).
+
+--- BACKEND ---
+Dasturlash tili: Python 3.12+
+Veb-freymvork: FastAPI (asinxron, yuqori unumdor REST API)
+Ma'lumotlar bazasi: SQLite (SQLAlchemy ORM orqali)
+Sun'iy intellekt: Google Gemini API (gemini-2.5-flash modeli)
+Qidiruv algoritmi: BM25 (Best Match 25) — matnga asoslangan qidiruv
+Autentifikatsiya: JWT (JSON Web Token), bcrypt parol shifrlash
+Arxitektura pattern: RAG (Retrieval-Augmented Generation)
+
+--- FRONTEND ---
+Dasturlash tili: TypeScript
+UI freymvork: React 18 (Vite build tool bilan)
+Stil: TailwindCSS v3
+Routing: React Router v6
+Holat boshqaruvi: React Context API (ChatContext, AuthContext)
+Ma'lumot saqlash: localStorage (chat tarixi, sozlamalar)
+
+--- INFRATUZILMA ---
+API server: Uvicorn (ASGI)
+CORS: Barcha so'rovlar nazorat qilinadi
+Deployment: Lokal server (localhost:8000 backend, localhost:5173 frontend)
+
+================================================================
+3. RAG ARXITEKTURASI (ASOSIY TEXNIK YONDASHUV)
+================================================================
+
+RAG (Retrieval-Augmented Generation) — bu sun'iy intellekt modeliga
+javob berish uchun avval tegishli hujjatlarni topib, keyin ularni
+kontekst sifatida modelga berish texnologiyasi.
+
+BeLegal'da RAG quyidagicha ishlaydi:
+
+QADAM 1 — Ma'lumotni tayyorlash (Ingest):
+- O'zbekiston Konstitutsiyasi matni (moddalar.txt) yuklanadi
+- Matn har bir modda bo'yicha bo'laklarga (chunks) ajratiladi
+- Har bir bo'lak metadata bilan saqlanadi: modda raqami, bob nomi,
+  bo'lim nomi, hujjat nomi
+- Jami 155 ta modda indekslanadi
+
+QADAM 2 — Qidiruv (Retrieval):
+- Foydalanuvchi savol yozadi
+- BM25 algoritmi savoldagi kalit so'zlarni barcha moddalar bilan solishtiradi
+- Eng mos keladigan top-K (odatda 4) modda tanlanadi
+- BM25 formula: score(D,Q) = Σ IDF(qi) * [f(qi,D)*(k1+1)] / [f(qi,D)+k1*(1-b+b*|D|/avgdl)]
+  bu erda: f(qi,D) — hujjatdagi so'z chastotasi, IDF — teskari hujjat chastotasi
+
+QADAM 3 — Generatsiya (Generation):
+- Topilgan moddalar kontekst sifatida Gemini API ga yuboriladi
+- Maxsus system prompt orqali model faqat berilgan kontekst asosida
+  javob berishi majburlashtiriladi
+- Model javobni strukturalangan formatda beradi:
+  * Asosiy javob
+  * Huquqiy asoslar (har bir modda uchun)
+  * Xulosa
+- Javob token-by-token streaming orqali foydalanuvchiga uzatiladi (SSE)
+
+QADAM 4 — Manbalarni ko'rsatish:
+- Javob ostida foydalanilgan moddalar card ko'rinishida chiqadi
+- Har bir manbaga bosilsa, to'liq hujjat sahifasiga o'tib,
+  tegishli modda sariq rangda ajratib ko'rsatiladi
+
+================================================================
+4. LOYIHA TUZILMASI (FAYL STRUKTURASI)
+================================================================
+
+BeLegal/
+├── backend/                    # Server tomoni
+│   ├── main.py                 # FastAPI ilova, startup, CORS
+│   ├── database.py             # SQLite ulanish, ORM sozlamasi
+│   ├── schemas.py              # Pydantic ma'lumot modellari
+│   ├── auth/                   # Autentifikatsiya moduli
+│   │   ├── models.py           # User ORM modeli
+│   │   ├── schemas.py          # Register/Login Pydantic sxemalari
+│   │   ├── service.py          # Biznes logika: JWT, bcrypt, CRUD
+│   │   └── router.py           # /api/auth/* endpointlari
+│   ├── rag/                    # RAG moduli
+│   │   ├── ingest.py           # Matn tahlili, moddalarni ajratish
+│   │   └── pipeline.py        # BM25 qidiruv + Gemini streaming
+│   └── routers/               # API yo'nalishlari
+│       ├── chat.py             # POST /api/chat (SSE streaming)
+│       └── documents.py       # GET /api/documents
+│
+├── frontend/                  # Foydalanuvchi interfeysi
+│   └── src/
+│       ├── context/           # Global holat
+│       │   ├── AuthContext.tsx # Login/logout holati
+│       │   └── ChatContext.tsx # Chat tarixi, aktiv chat
+│       ├── pages/             # Sahifalar
+│       │   ├── LandingPage.tsx # Bosh sahifa (publick)
+│       │   ├── LoginPage.tsx   # Kirish sahifasi
+│       │   ├── RegisterPage.tsx# Ro'yxatdan o'tish
+│       │   ├── ChatPage.tsx    # Asosiy chat interfeysi
+│       │   ├── DocumentsPage.tsx# Hujjat ko'rish
+│       │   └── SettingsPage.tsx # Sozlamalar
+│       └── components/        # Qayta foydalaniladigan komponentlar
+│           ├── Layout.tsx      # Sidebar + navigatsiya
+│           ├── ChatMessage.tsx # Xabar bubble (user/assistant)
+│           ├── ChatInput.tsx   # Matn kiritish maydoni
+│           └── SourceCard.tsx  # Manba kartochkasi
+│
+└── data/
+    └── moddalar.txt           # O'zbekiston Konstitutsiyasi matni
+
+================================================================
+5. MA'LUMOTLAR BAZASI TUZILMASI
+================================================================
+
+SQLite ma'lumotlar bazasi (belegal.db):
+
+Jadval: users
++----------------+----------+----------------------------------+
+| Ustun          | Tur      | Tavsif                           |
++----------------+----------+----------------------------------+
+| id             | INTEGER  | Asosiy kalit (auto increment)    |
+| email          | VARCHAR  | Unikal email, indekslangan       |
+| full_name      | VARCHAR  | To'liq ism                       |
+| hashed_password| VARCHAR  | bcrypt shifrlangan parol         |
+| is_active      | BOOLEAN  | Faollik holati                   |
+| plan           | VARCHAR  | free / pro / advokat             |
+| created_at     | DATETIME | Ro'yxatdan o'tgan vaqt           |
++----------------+----------+----------------------------------+
+
+Chat tarixi: localStorage (brauzer tomonida saqlanadi)
++----------------+----------+----------------------------------+
+| Maydon         | Tur      | Tavsif                           |
++----------------+----------+----------------------------------+
+| id             | UUID     | Chat identifikatori              |
+| title          | String   | Birinchi savol (qisqartirilgan)  |
+| messages       | Array    | Barcha xabarlar massivi          |
+| createdAt      | Number   | Unix timestamp                   |
+| updatedAt      | Number   | Oxirgi yangilanish               |
++----------------+----------+----------------------------------+
+
+================================================================
+6. API ENDPOINTLARI
+================================================================
+
+AUTENTIFIKATSIYA:
+POST /api/auth/register  — Yangi foydalanuvchi ro'yxatdan o'tish
+  Kirish: { email, full_name, password }
+  Chiqish: { access_token, token_type }
+
+POST /api/auth/login     — Tizimga kirish
+  Kirish: { email, password }
+  Chiqish: { access_token, token_type }
+
+GET  /api/auth/me        — Joriy foydalanuvchi ma'lumotlari
+  Header: Authorization: Bearer <token>
+  Chiqish: { id, email, full_name, plan, created_at }
+
+CHAT:
+POST /api/chat           — Savol berish (SSE streaming)
+  Kirish: { query: string, k: number }
+  Chiqish: Server-Sent Events oqimi:
+    data: {"type": "sources", "sources": [...]}
+    data: {"type": "token", "content": "..."}
+    data: [DONE]
+
+HUJJATLAR:
+GET  /api/documents      — Barcha hujjatlar strukturasi
+  Chiqish: { documents: [{ name, bobs: [{ name, bolim, moddalar: [...] }] }] }
+
+GET  /api/health         — Server holati tekshirish
+
+================================================================
+7. XAVFSIZLIK MEXANIZMLARI
+================================================================
+
+1. Parol shifrlash: bcrypt algoritmi (salt rounds=12)
+   — Har bir parol uchun tasodifiy salt generatsiya qilinadi
+   — Rainbow table hujumlaridan himoya
+
+2. JWT autentifikatsiya:
+   — Token muddati: 30 kun
+   — HS256 algoritmi bilan imzolangan
+   — Har so'rovda Authorization header tekshiriladi
+
+3. CORS himoyasi:
+   — Faqat localhost:5173 va localhost:3000 ga ruxsat
+
+4. Hallucination oldini olish:
+   — System prompt orqali model faqat berilgan kontekst asosida
+     javob berishga majburlashtiriladi
+   — Agar javob topilmasa, aniq xabar beriladi
+
+5. Protected Routes:
+   — Frontend tomonida autentifikatsiya tekshiruvi
+   — Token bo'lmasa, landing sahifasiga yo'naltiriladi
+
+================================================================
+8. FOYDALANUVCHI INTERFEYSI SAHIFALARI
+================================================================
+
+1. LANDING PAGE (bosh sahifa):
+   - Hero bo'lim: katta sarlavha, tavsif, CTA tugmalari
+   - Features bo'lim: 6 ta xususiyat kartochalari
+   - "Qanday ishlaydi?" bo'lim: 3 qadam
+   - Narx rejalari bo'lim: 3 ta tarif (Bepul, Pro, Advokat)
+   - Footer
+
+2. LOGIN/REGISTER sahifalar:
+   - Zamonaviy qora fon dizayn
+   - Forma validatsiyasi
+   - Xato xabarlar
+   - Loading holati
+
+3. CHAT sahifasi (asosiy funksionallik):
+   - ChatGPT uslubidagi suhbat interfeysi
+   - Streaming javob (token-by-token)
+   - Markdown qo'llab-quvvatlash
+   - Manbalar kartochalari (bosilsa hujjatga o'tadi)
+   - Tavsiyalangan savollar (bo'sh holatda)
+   - Enter — yuborish, Shift+Enter — yangi qator
+
+4. DOCUMENTS sahifasi:
+   - Chap panel: hujjatlar ro'yxati + bob navigatsiyasi
+   - O'ng panel: to'liq hujjat matni
+   - Sariq highlight: chat manbasi sifatida ko'rsatilgan modda
+   - "Chatga qaytish" tugmasi (chat orqali kelganda)
+
+5. SETTINGS sahifasi:
+   - Profil kartochkasi (ism, email, reja)
+   - k parametri (natijalar soni slayideri, 2–8)
+   - Obuna rejalari (3 ta tarif, kelajak uchun)
+   - Kelajak imkoniyatlari (6 ta feature preview)
+   - Chat tarixini o'chirish (xavfli zona)
+
+6. SIDEBAR navigatsiya:
+   - Yangi chat tugmasi
+   - Chat tarixi (Bugun/Kecha/Bu hafta/Oldingi guruhlari)
+   - Hujjatlar va Sozlamalar linklari
+   - Foydalanuvchi kartochkasi (ism, reja badge, chiqish)
+
+================================================================
+9. OBUNA REJALARI (KELAJAK UCHUN)
+================================================================
+
+BEPUL (joriy):
+- Kunlik 20 ta savol
+- Konstitutsiya bazasi
+- 7 kunlik chat tarixi
+- Asosiy hujjat ko'rish
+
+PRO (49,900 so'm/oy) — rejalashtirilgan:
+- Kunlik 500 ta savol
+- Barcha qonunlar bazasi (Jinoyat kodeksi, Fuqarolik kodeksi va h.k.)
+- Cheksiz chat tarixi
+- AI tahlil va xulosalar
+- PDF/TXT eksport
+- Ustuvor qo'llab-quvvatlash
+
+ADVOKAT (149,900 so'm/oy) — rejalashtirilgan:
+- Cheksiz savollar
+- To'liq qonunchilik arxivi
+- Hujjat tahlili va tekshirish
+- Ish holati kuzatuvi (case tracker)
+- REST API kirish
+- Jamoa hisobi (5 foydalanuvchi)
+- Shaxsiy onboarding
+- SLA kafolati 99.9%
+
+================================================================
+10. KELAJAK RIVOJLANISH REJALARI
+================================================================
+
+1. Ko'proq qonunlar qo'shish:
+   - Jinoyat kodeksi (O'zRK)
+   - Fuqarolik kodeksi
+   - Mehnat kodeksi
+   - Soliq kodeksi
+   - Ma'muriy javobgarlik to'g'risidagi kodeks
+
+2. Vektorli qidiruv (semantic search):
+   - Hozirgi BM25 (kalit so'z asosida) dan
+   - Embedding asosidagi semantik qidiruvga o'tish
+   - ChromaDB yoki FAISS vektorbazasi
+
+3. Ko'p tilli qo'llab-quvvatlash:
+   - O'zbek tili (joriy)
+   - Rus tili
+   - Ingliz tili
+
+4. Qo'shimcha funksionallik:
+   - Hujjat yuklash va tahlil qilish (PDF, DOCX)
+   - Advokat bilan bog'lanish moduli
+   - Chat eksport (PDF/TXT)
+   - Push bildirishnomalar (qonun yangiliklari)
+   - Ish holati kuzatish tizimi
+
+5. Texnik yaxshilanishlar:
+   - PostgreSQL ga o'tish (ishlab chiqarish uchun)
+   - Redis cache (tez-tez beriladigan savollar uchun)
+   - Docker konteynerizatsiya
+   - CI/CD pipeline
+   - Rate limiting (so'rovlar chastotasini cheklash)
+   - Admin panel
+
+================================================================
+11. ISHLATILGAN TEXNOLOGIYALAR VA KUTUBXONALAR
+================================================================
+
+BACKEND:
+- FastAPI 0.110+ — zamonaviy Python veb-freymvork
+- SQLAlchemy 2.0 — Python uchun ORM
+- python-jose — JWT token yaratish va tekshirish
+- bcrypt — parol shifrlash
+- rank-bm25 — BM25 qidiruv algoritmi implementatsiyasi
+- langchain-google-genai — Gemini API integratsiyasi
+- langchain-core — LangChain asosiy kutubxona
+- python-dotenv — muhit o'zgaruvchilari
+- uvicorn — ASGI server
+- pydantic — ma'lumot validatsiyasi
+
+FRONTEND:
+- React 18 — UI kutubxonasi
+- TypeScript — kuchli tipizatsiya
+- Vite 5 — tez build vositasi
+- TailwindCSS 3 — utility-first CSS freymvork
+- React Router 6 — client-side routing
+- react-markdown — Markdown render
+- remark-gfm — GitHub Flavored Markdown
+
+SUN'IY INTELLEKT:
+- Google Gemini API (gemini-2.5-flash) — asosiy LLM
+- BM25 algoritmi — hujjat qidirish
+- RAG arxitekturasi — aniqlikni oshirish
+
+================================================================
+12. LOYIHA STATISTIKASI
+================================================================
+
+- Jami faylllar soni: ~45 ta
+- Backend kod satrlari: ~700 qator
+- Frontend kod satrlari: ~1500 qator
+- Indekslangan moddalar: 155 ta (Konstitutsiya)
+- API endpointlari: 7 ta
+- React sahifalar: 6 ta
+- React komponentlari: 6 ta
+
+================================================================
+13. ILMIY AHAMIYATI
+================================================================
+
+Bu loyiha quyidagi ilmiy va amaliy muammolarni hal qiladi:
+
+1. HUQUQIY SAVODXONLIK MUAMMOSI:
+   O'zbekistonda huquqiy savodxonlik darajasi past. Ko'p fuqarolar
+   o'z konstitutsiyaviy huquqlaridan xabarsiz. BeLegal bu bo'shliqni
+   to'ldiradi.
+
+2. QONUN MATNINING MURAKKABLIGI:
+   Yuridik til oddiy fuqaro uchun qiyin. AI yordamida qonun matni
+   oddiy, tushunарли tilda izohlash muammosi hal etiladi.
+
+3. RAG TEXNOLOGIYASINING LOKAL QONUNCHILIKKA QO'LLANILISHI:
+   Umumiy maqsadli LLM modellar O'zbekiston qonunchiligi bo'yicha
+   aniq ma'lumot bermaydi. RAG arxitekturasi orqali modelni
+   maxsus domenga yo'naltirish usuli ko'rsatiladi.
+
+4. HALLUCINATION MUAMMOSI:
+   LLM modellari noto'g'ri ma'lumot (hallucination) ishlab chiqishi
+   mumkin — bu huquqiy sohada juda xavfli. BeLegal ikkita himoya
+   mexanizmi qo'llaydi:
+   a) Faqat hujjatdagi matn asosida javob berish (RAG)
+   b) System prompt orqali modelni cheklash
+
+5. FOYDALANUVCHI TAJRIBASI (UX) VA HUQUQIY TIZIM:
+   Huquqiy ma'lumot tizimlari odatda murakkab interfeyslarga ega.
+   BeLegal suhbatli (conversational) interfeys orqali bu muammoni
+   hal etadi.
+
+================================================================
+14. QIYOSIY TAHLIL
+================================================================
+
+| Xususiyat          | BeLegal  | Google  | Advokat | Lex.uz  |
+|--------------------|----------|---------|---------|---------|
+| O'zbek qonunlari   | HA       | Qisman  | HA      | HA      |
+| AI javob           | HA       | HA      | YO'Q    | YO'Q    |
+| Modda manbasi      | HA       | YO'Q    | HA      | YO'Q    |
+| Suhbat interfeysi  | HA       | HA      | YO'Q    | YO'Q    |
+| Hallucination himoya| HA      | YO'Q    | —       | —       |
+| Bepul kirish       | HA       | HA      | YO'Q    | HA      |
+| Offline ishlash    | Qisman   | YO'Q    | —       | YO'Q    |
+
+================================================================
+15. XULOSA
+================================================================
+
+BeLegal — O'zbekiston huquqiy tizimini democratizatsiya qilishga
+qaratilgan innovatsion platforma. Loyiha RAG arxitekturasini mahalliy
+qonunchilikka muvaffaqiyatli qo'llagan holda, foydalanuvchilarga
+ishonchli, tezkor va aniq manbalar bilan asoslangan huquqiy ma'lumot
+beradi.
+
+Texnologik nuqtai nazardan, loyiha zamonaviy veb-arxitektura tamoyillarini
+(microservice-ga yaqin yondashuv, RESTful API, JWT autentifikatsiya,
+streaming response) qo'llab, o'quv loyihasi uchun yuqori sifatli
+kod namunasini taqdim etadi.
+
+Ijtimoiy nuqtai nazardan, bu platforma fuqarolarning o'z
+konstitutsiyaviy huquqlarini bilishiga, advokatga murojaat
+qilmasdan boshlang'ich huquqiy ma'lumot olishiga yordam beradi.
+
+================================================================
+GPT UCHUN KO'RSATMA:
+================================================================
+
+Yuqoridagi ma'lumotlar asosida "BeLegal" loyihasi bo'yicha
+Bitiruv Malakaviy Ishi yozing. BMI quyidagi bo'limlardan iborat bo'lsin:
+
+1. Kirish (muammo, maqsad, vazifalar, ob'ekt, predmet, metodlar)
+2. I Bob: Adabiyotlar sharhi (RAG, LLM, huquqiy AI tizimlari)
+3. II Bob: Tahlil va loyihalash (arxitektura, algoritmlar, DB)
+4. III Bob: Amalga oshirish va natijalar (kod, testlar, UX)
+5. Xulosa va tavsiyalar
+6. Adabiyotlar ro'yxati
+
+Til: O'zbek tili
+Hajm: 50-70 sahifa
+Format: Akademik uslub, GOST standartida
+
+================================================================
