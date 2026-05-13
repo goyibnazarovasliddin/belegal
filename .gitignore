@@ -1,26 +1,51 @@
-# Vector store
+# Vector store (legacy)
 chroma_db/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+belegal.db
 
 # Python
 __pycache__/
 *.py[cod]
 *.pyo
+*.egg-info/
 .venv/
 venv/
 env/
-*.egg-info/
-dist/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
 
 # Node
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/node_modules/
 
-# Env
+# Env / secrets
 .env
 .env.local
+.env.*.local
+
+# pip stderr leaks (=>=0.2.0 etc.)
+=*
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
