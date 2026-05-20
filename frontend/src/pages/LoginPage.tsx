@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import Logo from '../components/Logo'
 
 export default function LoginPage() {
   const { login, user, loading: authLoading } = useAuth()
@@ -27,16 +28,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4 animate-fade-in">
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-96 h-64 bg-indigo-600/15 blur-[80px] rounded-full pointer-events-none" />
 
-      <div className="relative w-full max-w-md">
+      <div className="relative w-full max-w-md animate-fade-in-up">
         <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-2 text-white">
-            <span className="text-3xl">⚖️</span>
-            <span className="text-xl font-bold">BeLegal</span>
+          <Link to="/" className="inline-flex items-center gap-2.5 text-white">
+            <Logo size={44} />
+            <span className="text-xl font-bold tracking-tight">BeLegal</span>
           </Link>
-          <p className="text-gray-500 text-sm mt-2">Hisobingizga kiring</p>
+          <p className="text-gray-500 text-sm mt-3">Hisobingizga kiring</p>
         </div>
 
         <div className="bg-white/4 border border-white/10 rounded-2xl p-8">

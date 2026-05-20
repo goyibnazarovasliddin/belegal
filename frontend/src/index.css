@@ -8,25 +8,66 @@
       'Helvetica Neue', Arial, sans-serif;
   }
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-slate-950 text-slate-100;
   }
+
+  /* Custom scrollbars — dark + indigo accent on hover */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99, 102, 241, 0.25) transparent;
+  }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.55), rgba(168, 85, 247, 0.55));
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+  *::-webkit-scrollbar-corner { background: transparent; }
 }
 
+/* Markdown content inside chat assistant bubbles (dark) */
 .prose-legal p {
-  @apply mb-2 leading-relaxed;
+  @apply mb-2 leading-relaxed text-slate-200;
 }
 .prose-legal ul,
 .prose-legal ol {
   @apply ml-5 mb-2 space-y-1;
 }
 .prose-legal li {
-  @apply list-disc;
+  @apply list-disc text-slate-200;
 }
 .prose-legal strong {
-  @apply font-semibold text-gray-900;
+  @apply font-semibold text-white;
 }
 .prose-legal h1,
 .prose-legal h2,
 .prose-legal h3 {
-  @apply font-semibold text-gray-800 mb-1 mt-3;
+  @apply font-semibold text-white mb-1 mt-3;
+}
+.prose-legal code {
+  @apply bg-slate-800 text-indigo-300 px-1.5 py-0.5 rounded text-xs;
+}
+.prose-legal a {
+  @apply text-indigo-300 hover:text-indigo-200 underline;
+}
+.prose-legal blockquote {
+  @apply border-l-2 border-indigo-500/40 pl-3 italic text-slate-400 my-2;
+}
+
+/* Explicit logo rotation — guaranteed to work regardless of Tailwind config */
+@keyframes belegal-spin-clockwise {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.belegal-logo-spin {
+  animation: belegal-spin-clockwise 7s linear infinite;
+  transform-origin: 50% 50%;
+  will-change: transform;
 }

@@ -183,25 +183,93 @@ def _extract_sources(articles: list[dict]) -> list[dict]:
     ]
 
 
-async def stream_rag_response(query: str, k: int = 4):
-    """Async generator yielding SSE lines."""
-    results = search(query, k)
-    sources = _extract_sources(results)
-    contacts = _get_contacts(results, query)
+async def generate_title(query: str, answer: str = "") -> str:
+    """Generate a short Uzbek chat title (3-5 words) from the first user query."""
+    fallback = query.strip()
+    if len(fallback) > 45:
+        fallback = fallback[:42].rstrip() + "…"
 
-    yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
-    yield f"data: {json.dumps({'type': 'contacts', 'contacts': contacts})}\n\n"
+    if not OPENAI_API_KEY:
+        return fallback
+
+    try:
+        from langchain_openai import ChatOpenAI  # type: ignore
+        from langchain_core.messages import SystemMessage, HumanMessage  # type: ignore
+    except ImportError:
+        return fallback
+
+    try:
+        llm = ChatOpenAI(
+            model=OPENAI_MODEL,
+            api_key=OPENAI_API_KEY,
+            temperature=0,
+            max_tokens=20,
+        )
+        prompt = (
+            "Quyidagi savol uchun o'zbek tilida qisqa (3-5 so'z) sarlavha yarating. "
+            "Faqat sarlavhani qaytaring, qo'shtirnoqsiz, nuqtasiz.\n\n"
+            f"Savol: {query}"
+        )
+        result = await llm.ainvoke(
+            [SystemMessage(content="Siz huquqiy chat uchun qisqa sarlavhalar yaratuvchisiz."),
+             HumanMessage(content=prompt)]
+        )
+        title = (result.content or "").strip().strip('"').strip("'").strip('.')
+        if not title:
+            return fallback
+        if len(title) > 50:
+            title = title[:47].rstrip() + "…"
+        return title
+    except Exception:
+        return fallback
+
+
+def _build_search_query(query: str, history: list[dict] | None) -> str:
+    """Combine recent user turns with current query for better retrieval on follow-ups."""
+    if not history:
+        return query
+    prior_user = [m["content"] for m in history[-6:] if m["role"] == "user"]
+    if not prior_user:
+        return query
+    return " ".join(prior_user[-2:] + [query])
+
+
+async def stream_rag_response(
+    query: str,
+    k: int = 4,
+    history: list[dict] | None = None,
+):
+    """Async generator yielding SSE lines. `history` is prior turns (no current query).
+
+    Stream order: tokens first (full answer), then sources, then contacts.
+    This avoids layout jumping while the bubble grows.
+    """
+    history = history or []
+
+    search_q = _build_search_query(query, history)
+    results = search(search_q, k)
+    sources = _extract_sources(results)
+    contacts = _get_contacts(results, search_q)
 
     if not results:
-        # No matching articles — stream fallback message, skip Gemini
         for i in range(0, len(_NO_RESULTS_MSG), 80):
             yield f"data: {json.dumps({'type': 'token', 'content': _NO_RESULTS_MSG[i:i+80]})}\n\n"
+        yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
+        yield f"data: {json.dumps({'type': 'contacts', 'contacts': contacts})}\n\n"
         yield "data: [DONE]\n\n"
         return
 
+    llm_available = False
     if OPENAI_API_KEY:
-        from langchain_openai import ChatOpenAI
-        from langchain_core.prompts import ChatPromptTemplate
+        try:
+            from langchain_openai import ChatOpenAI
+            from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+            llm_available = True
+        except ImportError:
+            print("WARNING: langchain-openai not installed; falling back to retrieval-only mode. "
+                  "Run: pip install -r backend/requirements.txt")
+
+    if llm_available:
 
         context = "\n\n---\n\n".join(
             f"[{a['document']} — {a['modda']}-modda]:\n{a['text']}" for a in results
@@ -212,12 +280,17 @@ async def stream_rag_response(query: str, k: int = 4):
             temperature=0,
             streaming=True,
         )
-        prompt = ChatPromptTemplate.from_messages(
-            [("system", _SYSTEM), ("human", "{question}")]
-        )
-        prompt_value = await prompt.ainvoke({"context": context, "question": query})
 
-        async for chunk in llm.astream(prompt_value):
+        # Build full message list: system + truncated history + new query
+        msgs = [SystemMessage(content=_SYSTEM.format(context=context))]
+        for m in history[-10:]:  # last 10 turns to bound tokens
+            if m["role"] == "user":
+                msgs.append(HumanMessage(content=m["content"]))
+            elif m["role"] == "assistant":
+                msgs.append(AIMessage(content=m["content"]))
+        msgs.append(HumanMessage(content=query))
+
+        async for chunk in llm.astream(msgs):
             if chunk.content:
                 yield f"data: {json.dumps({'type': 'token', 'content': chunk.content})}\n\n"
     else:
@@ -229,4 +302,7 @@ async def stream_rag_response(query: str, k: int = 4):
         for i in range(0, len(answer), 80):
             yield f"data: {json.dumps({'type': 'token', 'content': answer[i:i+80]})}\n\n"
 
+    # Emit sources & contacts AFTER full answer streamed → no jumping above
+    yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
+    yield f"data: {json.dumps({'type': 'contacts', 'contacts': contacts})}\n\n"
     yield "data: [DONE]\n\n"

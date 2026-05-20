@@ -1,9 +1,16 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Literal, Optional
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
 
 
 class ChatRequest(BaseModel):
     query: str
+    k: Optional[int] = 4
+    history: Optional[List[ChatMessage]] = None
 
 
 class Source(BaseModel):

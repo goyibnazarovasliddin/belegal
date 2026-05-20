@@ -1,40 +1,53 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import type { Message } from '../types'
 import { useChats } from '../context/ChatContext'
 import { useSettings } from '../hooks/useSettings'
 import ChatMessage from '../components/ChatMessage'
 import ChatInput from '../components/ChatInput'
+import Logo from '../components/Logo'
 
 const SUGGESTIONS = [
   "So'z erkinligi qanday kafolatlanadi?",
-  "Prezidentga qo'yiladigan talablar qanday?",
   "Mulkchilik huquqi haqida nimalar aytilgan?",
-  "Fuqarolikni qanday yo'qotish mumkin?",
-  "Davlat hokimiyati tizimi qanday tuzilgan?",
-  "Inson qadr-qimmati qanday himoya qilinadi?",
+  "Ishdan bo'shatish tartibi qanday?",
+  "O'g'irlik uchun qanday jazo beriladi?",
 ]
 
 export default function ChatPage() {
-  const { activeId, activeChat, newChat, updateMessages } = useChats()
+  const { chats, setActiveId, newChat, updateMessages, setChatTitle } = useChats()
   const { settings } = useSettings()
   const navigate = useNavigate()
+  const { chatId: urlChatId } = useParams<{ chatId: string }>()
 
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const currentChatId = useRef<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Sync messages from active chat
+  // Sync ChatContext activeId with URL param + load messages
   useEffect(() => {
-    if (activeChat) {
-      setMessages(activeChat.messages)
-      currentChatId.current = activeChat.id
+    // If we just created/are streaming this chat locally, skip the reload
+    if (urlChatId && urlChatId === currentChatId.current) {
+      setActiveId(urlChatId)
+      return
+    }
+    if (urlChatId) {
+      const chat = chats.find((c) => c.id === urlChatId)
+      if (chat) {
+        setActiveId(urlChatId)
+        setMessages(chat.messages)
+        currentChatId.current = urlChatId
+      } else {
+        navigate('/chat', { replace: true })
+      }
     } else {
+      setActiveId(null)
       setMessages([])
       currentChatId.current = null
     }
-  }, [activeId]) // eslint-disable-line
+    // eslint-disable-next-line
+  }, [urlChatId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -42,11 +55,12 @@ export default function ChatPage() {
 
   const sendMessage = useCallback(
     async (query: string) => {
-      // Ensure a chat exists
+      // Ensure a chat exists. If creating new, navigate to its URL.
       let chatId = currentChatId.current
       if (!chatId) {
         chatId = newChat()
         currentChatId.current = chatId
+        navigate(`/chat/${chatId}`, { replace: true })
       }
 
       const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: query }
@@ -58,10 +72,15 @@ export default function ChatPage() {
       setLoading(true)
 
       try {
+        // Strip empty assistant placeholder; send only filled turns
+        const historyPayload = messages
+          .filter((m) => m.content.trim().length > 0)
+          .map((m) => ({ role: m.role, content: m.content }))
+
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query, k: settings.k }),
+          body: JSON.stringify({ query, k: settings.k, history: historyPayload }),
         })
         if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
 
@@ -113,6 +132,22 @@ export default function ChatPage() {
         }
 
         updateMessages(chatId, finalMessages)
+
+        // First user message in this chat → ask LLM for a short title
+        const isFirstMessage = messages.length === 0
+        if (isFirstMessage) {
+          const finalAssistant = finalMessages.find((m) => m.id === asstId)
+          fetch('/api/chat/title', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, answer: finalAssistant?.content ?? '' }),
+          })
+            .then((r) => r.ok ? r.json() : null)
+            .then((data: { title?: string } | null) => {
+              if (data?.title) setChatTitle(chatId!, data.title)
+            })
+            .catch(() => { /* title is non-critical */ })
+        }
       } catch {
         setMessages((prev) =>
           prev.map((m) =>
@@ -125,33 +160,30 @@ export default function ChatPage() {
         setLoading(false)
       }
     },
-    [messages, newChat, settings.k, updateMessages]
+    [messages, newChat, settings.k, updateMessages, setChatTitle, navigate]
   )
 
-  const handleSourceClick = () => {
-    // DocumentsPage will get { state: { fromChat: true } } via SourceCard
-  }
-
   return (
-    <div className="flex flex-col h-full bg-gray-50">
+    <div className="flex flex-col h-full bg-slate-950 animate-fade-in">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto py-6">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-6">
-            <div className="text-5xl mb-4">⚖️</div>
-            <h2 className="text-xl font-semibold text-gray-700 mb-1">
+          <div className="flex flex-col items-center justify-center h-full text-center px-6 animate-fade-in">
+            <Logo size={80} className="mb-5 drop-shadow-2xl" />
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 tracking-tight animate-slide-up">
               BeLegal Huquqiy Yordamchisi
             </h2>
-            <p className="text-sm text-gray-400 mb-8 max-w-md">
-              O'zbekiston Respublikasi Konstitutsiyasi asosida batafsil huquqiy
-              ma'lumot beradi. Barcha javoblar moddalar bilan asoslanadi.
+            <p className="text-sm text-slate-400 mb-8 max-w-md leading-relaxed animate-slide-up" style={{ animationDelay: '80ms' }}>
+              5 ta asosiy O'zbekiston kodeksi asosida batafsil huquqiy ma'lumot beradi.
+              Barcha javoblar moddalar bilan asoslanadi.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl">
-              {SUGGESTIONS.map((q) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-2xl">
+              {SUGGESTIONS.map((q, i) => (
                 <button
                   key={q}
                   onClick={() => sendMessage(q)}
-                  className="text-sm bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 rounded-xl px-4 py-3 text-left text-gray-600 transition-colors"
+                  className="text-sm bg-slate-900/60 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-900 rounded-xl px-4 py-3.5 text-left text-slate-200 transition-[background-color,border-color,box-shadow] duration-200 hover:shadow-lg hover:shadow-indigo-900/30 leading-snug animate-slide-up"
+                  style={{ animationDelay: `${150 + i * 50}ms` }}
                 >
                   {q}
                 </button>

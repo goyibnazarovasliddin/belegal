@@ -24,11 +24,13 @@ interface ChatContextValue {
   setActiveId: (id: string | null) => void
   newChat: () => string
   updateMessages: (id: string, messages: Message[]) => void
+  setChatTitle: (id: string, title: string) => void
   deleteChat: (id: string) => void
   clearAll: () => void
 }
 
 const ChatContext = createContext<ChatContextValue>(null!)
+const DEFAULT_TITLE = 'Yangi suhbat'
 
 function storageKey(userId: number | undefined) {
   return `belegal_chats_${userId ?? 'guest'}`
@@ -53,10 +55,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [chats, setChats] = useState<Chat[]>(() => loadChats(uid))
   const [activeId, setActiveIdState] = useState<string | null>(null)
 
-  // Reload chats when user changes (login / logout / switch account)
   useEffect(() => {
     setChats(loadChats(uid))
-    setActiveIdState(null) // always start with fresh empty chat
+    setActiveIdState(null)
   }, [uid])
 
   const setActiveId = useCallback((id: string | null) => {
@@ -67,7 +68,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const id = crypto.randomUUID()
     const chat: Chat = {
       id,
-      title: 'Yangi chat',
+      title: DEFAULT_TITLE,
       messages: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -81,18 +82,28 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return id
   }, [uid])
 
+  // Only updates messages — title is set separately by setChatTitle (LLM-generated)
   const updateMessages = useCallback(
     (id: string, messages: Message[]) => {
       setChats((prev) => {
-        const next = prev.map((c) => {
-          if (c.id !== id) return c
-          const firstUser = messages.find((m) => m.role === 'user')
-          const title = firstUser
-            ? firstUser.content.slice(0, 45) +
-              (firstUser.content.length > 45 ? '…' : '')
-            : c.title
-          return { ...c, messages, title, updatedAt: Date.now() }
-        })
+        const next = prev.map((c) =>
+          c.id === id ? { ...c, messages, updatedAt: Date.now() } : c
+        )
+        saveChats(uid, next)
+        return next
+      })
+    },
+    [uid]
+  )
+
+  const setChatTitle = useCallback(
+    (id: string, title: string) => {
+      const clean = title.trim()
+      if (!clean) return
+      setChats((prev) => {
+        const next = prev.map((c) =>
+          c.id === id ? { ...c, title: clean } : c
+        )
         saveChats(uid, next)
         return next
       })
@@ -133,6 +144,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setActiveId,
         newChat,
         updateMessages,
+        setChatTitle,
         deleteChat,
         clearAll,
       }}
