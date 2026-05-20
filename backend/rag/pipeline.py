@@ -336,6 +336,33 @@ _REL_ABS = 0.42   # cosine-sim floor: below this, an article isn't truly on-topi
 _REL_REL = 0.82   # keep articles within this fraction of the top match's score
 
 
+def _cited_subset(answer: str, results: list[dict]) -> list[dict]:
+    """Return only the retrieved articles whose modda number is cited in the answer.
+
+    When the same modda number exists in several documents, prefer the one whose
+    document name also appears in the answer text.
+    """
+    if not answer:
+        return []
+    cited_nums = set(_MODDA_Q_RE.findall(answer))
+    if not cited_nums:
+        return []
+
+    low = answer.lower()
+    chosen: list[dict] = []
+    seen: set[str] = set()
+    for a in results:
+        if str(a["modda"]) not in cited_nums or a["id"] in seen:
+            continue
+        # If the number is ambiguous across docs, require the doc name to appear
+        same_num = [r for r in results if str(r["modda"]) == str(a["modda"])]
+        if len(same_num) > 1 and a["document"].lower() not in low:
+            continue
+        chosen.append(a)
+        seen.add(a["id"])
+    return chosen
+
+
 def _relevant_subset(results: list[dict]) -> list[dict]:
     """Pick only the genuinely relevant articles to show as sources.
 
@@ -437,21 +464,18 @@ async def stream_rag_response(
     search_q = _build_search_query(query, history)
     results = search(search_q, k)  # full set → LLM context (recall)
 
-    # Display only genuinely relevant articles as sources/contacts —
-    # no fixed count. Keep those above a relevance threshold; if a clearly
-    # dominant match exists, show just it.
-    display = _relevant_subset(results)
-
-    sources = _extract_sources(display)
-    contacts = _get_contacts(display, search_q)
-
     if not results:
+        display = _relevant_subset(results)
+        sources = _extract_sources(display)
+        contacts = _get_contacts(display, search_q)[:4]
         for i in range(0, len(_NO_RESULTS_MSG), 80):
             yield f"data: {json.dumps({'type': 'token', 'content': _NO_RESULTS_MSG[i:i+80]})}\n\n"
         yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
         yield f"data: {json.dumps({'type': 'contacts', 'contacts': contacts})}\n\n"
         yield "data: [DONE]\n\n"
         return
+
+    answer_text = ""  # accumulate to detect which moddas the answer actually cites
 
     llm_available = False
     if OPENAI_API_KEY:
@@ -486,17 +510,24 @@ async def stream_rag_response(
 
         async for chunk in llm.astream(msgs):
             if chunk.content:
+                answer_text += chunk.content
                 yield f"data: {json.dumps({'type': 'token', 'content': chunk.content})}\n\n"
     else:
         parts = []
         for a in results:
             header = f"**{a['modda']}-modda**" + (f" — {a['bob']}" if a["bob"] else "")
             parts.append(f"{header}\n\n{a['text']}")
-        answer = "\n\n---\n\n".join(parts)
-        for i in range(0, len(answer), 80):
-            yield f"data: {json.dumps({'type': 'token', 'content': answer[i:i+80]})}\n\n"
+        answer_text = "\n\n---\n\n".join(parts)
+        for i in range(0, len(answer_text), 80):
+            yield f"data: {json.dumps({'type': 'token', 'content': answer_text[i:i+80]})}\n\n"
 
-    # Emit sources & contacts AFTER full answer streamed → no jumping above
+    # Sources = only the articles the answer actually cited; fall back to the
+    # relevance-thresholded subset if no citation could be matched.
+    display = _cited_subset(answer_text, results) or _relevant_subset(results)
+    sources = _extract_sources(display)
+    contacts = _get_contacts(display, search_q)[:4]  # max 4, most relevant
+
+    # Emit AFTER full answer streamed → no jumping above
     yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
     yield f"data: {json.dumps({'type': 'contacts', 'contacts': contacts})}\n\n"
     yield "data: [DONE]\n\n"
