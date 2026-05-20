@@ -440,13 +440,13 @@ async def generate_title(query: str, answer: str = "") -> str:
 
 
 def _build_search_query(query: str, history: list[dict] | None) -> str:
-    """Combine recent user turns with current query for better retrieval on follow-ups."""
-    if not history:
-        return query
-    prior_user = [m["content"] for m in history[-6:] if m["role"] == "user"]
-    if not prior_user:
-        return query
-    return " ".join(prior_user[-2:] + [query])
+    """Retrieve on the CURRENT question only.
+
+    Concatenating prior turns pollutes retrieval — after a few messages the
+    search mixes unrelated topics and pulls wrong articles, which then makes
+    the LLM hallucinate. Each question is its own fresh RAG lookup.
+    """
+    return query
 
 
 async def stream_rag_response(
@@ -499,13 +499,16 @@ async def stream_rag_response(
             streaming=True,
         )
 
-        # Build full message list: system + truncated history + new query
+        # System + minimal recent history + current query.
+        # Only the last exchange is kept, and prior assistant answers are
+        # truncated, so stale moddas don't bleed into the fresh context and
+        # cause the model to drift / hallucinate over a long conversation.
         msgs = [SystemMessage(content=_SYSTEM.format(context=context))]
-        for m in history[-10:]:  # last 10 turns to bound tokens
+        for m in history[-2:]:
             if m["role"] == "user":
-                msgs.append(HumanMessage(content=m["content"]))
+                msgs.append(HumanMessage(content=m["content"][:500]))
             elif m["role"] == "assistant":
-                msgs.append(AIMessage(content=m["content"]))
+                msgs.append(AIMessage(content=m["content"][:300]))
         msgs.append(HumanMessage(content=query))
 
         async for chunk in llm.astream(msgs):
