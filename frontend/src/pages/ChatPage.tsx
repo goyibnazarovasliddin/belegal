@@ -6,6 +6,7 @@ import { useSettings } from '../hooks/useSettings'
 import ChatMessage from '../components/ChatMessage'
 import ChatInput from '../components/ChatInput'
 import Logo from '../components/Logo'
+import { uuid } from '../lib/uuid'
 
 const SUGGESTIONS = [
   "So'z erkinligi qanday kafolatlanadi?",
@@ -63,8 +64,8 @@ export default function ChatPage() {
         navigate(`/chat/${chatId}`, { replace: true })
       }
 
-      const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: query }
-      const asstId = crypto.randomUUID()
+      const userMsg: Message = { id: uuid(), role: 'user', content: query }
+      const asstId = uuid()
       const asstMsg: Message = { id: asstId, role: 'assistant', content: '', sources: [], contacts: [] }
 
       const nextMessages = [...messages, userMsg, asstMsg]

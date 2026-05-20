@@ -8,6 +8,7 @@ import {
 } from 'react'
 import type { Message } from '../types'
 import { useAuth } from './AuthContext'
+import { uuid } from '../lib/uuid'
 
 export interface Chat {
   id: string
@@ -65,7 +66,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const newChat = useCallback(() => {
-    const id = crypto.randomUUID()
+    const id = uuid()
     const chat: Chat = {
       id,
       title: DEFAULT_TITLE,
