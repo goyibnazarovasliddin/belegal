@@ -26,7 +26,7 @@ function TypingDots() {
 
 function UserAvatar({ initial }: { initial: string }) {
   return (
-    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-md shadow-indigo-900/40">
+    <div className="hidden sm:flex w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-md shadow-indigo-900/40">
       {initial || '?'}
     </div>
   )
@@ -34,7 +34,7 @@ function UserAvatar({ initial }: { initial: string }) {
 
 function AssistantAvatar() {
   return (
-    <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center flex-shrink-0 overflow-hidden">
+    <div className="hidden sm:flex w-8 h-8 rounded-full bg-slate-900 border border-slate-800 items-center justify-center flex-shrink-0 overflow-hidden">
       <Logo size={26} />
     </div>
   )

@@ -75,7 +75,7 @@ export default function Layout() {
   const plan = PLAN_META[user?.plan ?? 'free']
 
   return (
-    <div className="flex h-screen bg-slate-950 overflow-hidden relative">
+    <div className="flex h-[100dvh] bg-slate-950 overflow-hidden relative">
       {/* Mobile overlay backdrop */}
       {mobileOpen && (
         <div
@@ -89,7 +89,7 @@ export default function Layout() {
         className={`
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
           fixed md:static top-0 left-0 z-40
-          w-64 h-full bg-slate-950 flex flex-col flex-shrink-0 border-r border-slate-800
+          w-64 h-[100dvh] md:h-full bg-slate-950 flex flex-col flex-shrink-0 border-r border-slate-800
           transition-transform duration-300 ease-out
         `}
       >

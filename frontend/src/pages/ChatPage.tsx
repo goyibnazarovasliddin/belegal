@@ -169,12 +169,12 @@ export default function ChatPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto py-6">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-6 animate-fade-in">
-            <Logo size={80} className="mb-5 drop-shadow-2xl" />
-            <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 tracking-tight animate-slide-up">
+          <div className="flex flex-col items-center justify-start sm:justify-center min-h-full text-center px-6 pt-8 sm:pt-0 pb-4 animate-fade-in">
+            <Logo size={68} className="mb-4 sm:mb-5 drop-shadow-2xl" />
+            <h2 className="text-lg sm:text-2xl font-bold text-white mb-2 tracking-tight animate-slide-up">
               BeLegal Huquqiy Yordamchisi
             </h2>
-            <p className="text-sm text-slate-400 mb-8 max-w-md leading-relaxed animate-slide-up" style={{ animationDelay: '80ms' }}>
+            <p className="text-xs sm:text-sm text-slate-400 mb-5 sm:mb-8 max-w-md leading-relaxed animate-slide-up" style={{ animationDelay: '80ms' }}>
               5 ta asosiy O'zbekiston kodeksi asosida batafsil huquqiy ma'lumot beradi.
               Barcha javoblar moddalar bilan asoslanadi.
             </p>
