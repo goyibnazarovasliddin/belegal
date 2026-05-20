@@ -23,7 +23,16 @@ QOIDALAR:
 1. Faqat quyida berilgan huquqiy matnlar asosida javob bering. O'z bilimingizdan HECH QACHON foydalanmang.
 2. Javobingiz to'liq, batafsil va tushuntirish xarakterida bo'lsin.
 3. Har bir fikrni tegishli modda raqami va hujjat nomi bilan asoslang.
-4. Javobni quyidagi tuzilmada bering:
+4. JUDA MUHIM — moddani savolga MOSLIGINI tekshiring:
+   - Faqat savolga BEVOSITA javob beradigan moddalardan foydalaning.
+   - Savol bir lavozim (masalan Prezident) haqida bo'lsa, BOSHQA lavozim
+     (deputat, senator, Bosh vazir, sudya va h.k.) haqidagi moddadagi
+     raqamlarni (yosh, muddat, talab) o'sha savoldagi lavozim talabi
+     sifatida KO'RSATMANG. Bu qo'pol xato.
+   - Agar berilgan moddalar orasida savolga bevosita javob beradigani
+     bo'lmasa — taxmin qilib, o'xshash moddadan raqam OLMANG va javob
+     TO'QIMANG. Buning o'rniga 6-qoidadagi shakldan foydalaning.
+5. Javobni quyidagi tuzilmada bering:
 
    ## Asosiy javob
    Savolga to'g'ridan-to'g'ri, aniq javob.
@@ -36,8 +45,10 @@ QOIDALAR:
    ## Xulosa
    Amaliy xulosalar va fuqaro nima qilishi mumkinligi haqida qisqacha.
 
-5. Agar savol mavjud hujjatlardan to'liq javoblanmasa:
+6. Agar savolga bevosita javob beruvchi modda kontekstda bo'lmasa:
    "Bu savolga mavjud hujjatlardan aniq javob topilmadi. Ammo quyidagi moddalar qisman tegishli bo'lishi mumkin: ..."
+   va faqat haqiqatan tegishli moddalarni sanab o'ting, ularning raqamlarini
+   savol javobi sifatida tasdiqlamang.
 
 Huquqiy matnlar (kontekst):
 {context}"""
@@ -268,7 +279,7 @@ def _rrf_fuse(bm_order: list[int], emb_order: list[int], k_const: int = 60) -> l
     return sorted(score, key=lambda i: score[i], reverse=True)
 
 
-def search(query: str, k: int = 6) -> list[dict]:
+def search(query: str, k: int = 8) -> list[dict]:
     bm25, articles = _build_index()
     bm_scores = bm25.get_scores(_expand(_tokenize(query)))
     bm_order = sorted(range(len(bm_scores)), key=lambda i: bm_scores[i], reverse=True)
@@ -280,12 +291,12 @@ def search(query: str, k: int = 6) -> list[dict]:
             qv = _embed_texts([query])[0]
             sims = emb @ qv
             emb_order = sorted(range(len(sims)), key=lambda i: sims[i], reverse=True)
-            # Fuse top candidates from both signals
-            fused = _rrf_fuse(bm_order[:50], emb_order[:50])
-            ranked_idx = [
-                i for i in fused
-                if bm_scores[i] > 0 or sims[i] > 0.25
-            ][:k]
+            # Semantic is the stronger signal for legal phrasing → use it as the
+            # primary ranking, then augment with top BM25 keyword hits (exact
+            # term/number matches RRF would otherwise bury).
+            sem_top = [i for i in emb_order[:k] if sims[i] > 0.30]
+            bm_top = [i for i in bm_order[:4] if bm_scores[i] > 0]
+            ranked_idx = list(dict.fromkeys(sem_top + bm_top))[: k + 4]
         except Exception:
             sims = None
             ranked_idx = [i for i in bm_order[:k] if bm_scores[i] > 0]
@@ -413,7 +424,7 @@ def _build_search_query(query: str, history: list[dict] | None) -> str:
 
 async def stream_rag_response(
     query: str,
-    k: int = 4,
+    k: int = 8,
     history: list[dict] | None = None,
 ):
     """Async generator yielding SSE lines. `history` is prior turns (no current query).

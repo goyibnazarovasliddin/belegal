@@ -14,7 +14,7 @@ async def chat(request: ChatRequest):
     return StreamingResponse(
         stream_rag_response(
             request.query,
-            k=request.k or 4,
+            k=max(request.k or 8, 8),
             history=history,
         ),
         media_type="text/event-stream",

@@ -6,7 +6,7 @@ export interface Settings {
   language: 'uz' | 'ru' | 'en'
 }
 
-const DEFAULTS: Settings = { k: 6, language: 'uz' }
+const DEFAULTS: Settings = { k: 8, language: 'uz' }
 
 function key(userId: number | undefined) {
   return `belegal_settings_${userId ?? 'guest'}`
