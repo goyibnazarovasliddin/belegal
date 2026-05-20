@@ -9,7 +9,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     query: str
-    k: Optional[int] = 4
+    k: Optional[int] = 6
     history: Optional[List[ChatMessage]] = None
 
 

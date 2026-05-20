@@ -198,16 +198,108 @@ def _build_index() -> tuple[BM25Okapi, tuple[dict, ...]]:
     return BM25Okapi(corpus), articles
 
 
-def search(query: str, k: int = 4) -> list[dict]:
+# ── Semantic embeddings (OpenAI) ───────────────────────────────────────────
+from pathlib import Path
+import hashlib
+
+EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
+_EMB_CACHE = Path(__file__).parent / "_embeddings.npz"
+
+
+def _embed_texts(texts: list[str]):
+    """Call OpenAI embeddings in batches; returns np.ndarray (n, dim)."""
+    import numpy as np
+    from openai import OpenAI
+
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    vecs: list[list[float]] = []
+    B = 256
+    for i in range(0, len(texts), B):
+        resp = client.embeddings.create(model=EMBED_MODEL, input=texts[i : i + B])
+        vecs.extend(d.embedding for d in resp.data)
+    arr = np.asarray(vecs, dtype="float32")
+    arr /= (np.linalg.norm(arr, axis=1, keepdims=True) + 1e-9)  # L2-normalize
+    return arr
+
+
+@lru_cache(maxsize=1)
+def _build_embeddings():
+    """Build (or load cached) normalized article embeddings. None if no API key."""
+    if not OPENAI_API_KEY:
+        return None
+    try:
+        import numpy as np
+    except ImportError:
+        print("WARNING: numpy not installed; semantic search disabled.")
+        return None
+
+    articles = get_all_articles()
+    sig = hashlib.md5("|".join(a["id"] for a in articles).encode()).hexdigest()
+
+    if _EMB_CACHE.exists():
+        try:
+            data = np.load(_EMB_CACHE, allow_pickle=True)
+            if str(data["sig"]) == sig and data["emb"].shape[0] == len(articles):
+                return data["emb"]
+        except Exception:
+            pass
+
+    try:
+        texts = [
+            f'{a["document"]} {a["modda"]}-modda {a.get("bob") or ""} {a["text"]}'
+            for a in articles
+        ]
+        emb = _embed_texts(texts)
+        np.savez(_EMB_CACHE, emb=emb, sig=sig)
+        print(f"INFO: Built {emb.shape[0]} article embeddings ({EMBED_MODEL}).")
+        return emb
+    except Exception as e:
+        print(f"WARNING: embedding build failed ({e}); semantic search disabled.")
+        return None
+
+
+def _rrf_fuse(bm_order: list[int], emb_order: list[int], k_const: int = 60) -> list[int]:
+    """Reciprocal Rank Fusion — combine two rankings without score normalization."""
+    score: dict[int, float] = {}
+    for r, i in enumerate(bm_order):
+        score[i] = score.get(i, 0.0) + 1.0 / (k_const + r)
+    for r, i in enumerate(emb_order):
+        score[i] = score.get(i, 0.0) + 1.0 / (k_const + r)
+    return sorted(score, key=lambda i: score[i], reverse=True)
+
+
+def search(query: str, k: int = 6) -> list[dict]:
     bm25, articles = _build_index()
-    scores = bm25.get_scores(_expand(_tokenize(query)))
-    order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
-    ranked = [articles[i] for i in order[:k] if scores[i] > 0]
+    bm_scores = bm25.get_scores(_expand(_tokenize(query)))
+    bm_order = sorted(range(len(bm_scores)), key=lambda i: bm_scores[i], reverse=True)
+
+    emb = _build_embeddings()
+    if emb is not None:
+        try:
+            import numpy as np
+            qv = _embed_texts([query])[0]
+            sims = emb @ qv
+            emb_order = sorted(range(len(sims)), key=lambda i: sims[i], reverse=True)
+            # Fuse top candidates from both signals
+            fused = _rrf_fuse(bm_order[:50], emb_order[:50])
+            ranked_idx = [
+                i for i in fused
+                if bm_scores[i] > 0 or sims[i] > 0.25
+            ][:k]
+        except Exception:
+            ranked_idx = [i for i in bm_order[:k] if bm_scores[i] > 0]
+    else:
+        ranked_idx = [i for i in bm_order[:k] if bm_scores[i] > 0]
+
+    ranked = [articles[i] for i in ranked_idx]
 
     # Direct "N-modda" lookups always win — prepend them, deduped
     nums = set(_MODDA_Q_RE.findall(query))
     if nums:
         direct = [a for a in articles if str(a["modda"]) in nums]
+        # rank same-number matches across docs by BM25 relevance
+        idx_of = {a["id"]: i for i, a in enumerate(articles)}
+        direct.sort(key=lambda a: bm_scores[idx_of[a["id"]]], reverse=True)
         seen = {a["id"] for a in direct}
         merged = direct + [a for a in ranked if a["id"] not in seen]
         return merged[: max(k, len(direct))]

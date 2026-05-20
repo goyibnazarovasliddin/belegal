@@ -7,6 +7,9 @@ chroma_db/
 *.sqlite3
 belegal.db
 
+# Embedding cache (rebuilt on demand)
+*.npz
+
 # Python
 __pycache__/
 *.py[cod]
