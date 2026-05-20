@@ -287,24 +287,63 @@ def search(query: str, k: int = 6) -> list[dict]:
                 if bm_scores[i] > 0 or sims[i] > 0.25
             ][:k]
         except Exception:
+            sims = None
             ranked_idx = [i for i in bm_order[:k] if bm_scores[i] > 0]
     else:
+        sims = None
         ranked_idx = [i for i in bm_order[:k] if bm_scores[i] > 0]
 
-    ranked = [articles[i] for i in ranked_idx]
+    # Relevance score per article (0..1): cosine sim if available, else norm BM25
+    max_bm = max(bm_scores) if len(bm_scores) and max(bm_scores) > 0 else 1.0
 
-    # Direct "N-modda" lookups always win — prepend them, deduped
+    def _rel(i: int) -> float:
+        if sims is not None:
+            return float(sims[i])
+        return float(bm_scores[i] / max_bm)
+
+    ranked = [{**articles[i], "_rel": _rel(i)} for i in ranked_idx]
+
+    # Direct "N-modda" lookups always win — forced max relevance
     nums = set(_MODDA_Q_RE.findall(query))
     if nums:
-        direct = [a for a in articles if str(a["modda"]) in nums]
-        # rank same-number matches across docs by BM25 relevance
         idx_of = {a["id"]: i for i, a in enumerate(articles)}
+        direct = [
+            {**a, "_rel": 1.0}
+            for a in articles
+            if str(a["modda"]) in nums
+        ]
         direct.sort(key=lambda a: bm_scores[idx_of[a["id"]]], reverse=True)
         seen = {a["id"] for a in direct}
         merged = direct + [a for a in ranked if a["id"] not in seen]
         return merged[: max(k, len(direct))]
 
     return ranked
+
+
+# Relevance thresholds for what counts as a "source" worth showing the user.
+_REL_ABS = 0.42   # cosine-sim floor: below this, an article isn't truly on-topic
+_REL_REL = 0.82   # keep articles within this fraction of the top match's score
+
+
+def _relevant_subset(results: list[dict]) -> list[dict]:
+    """Pick only the genuinely relevant articles to show as sources.
+
+    Variable count: a single dominant match shows alone; several close
+    matches all show; weak fusion-only candidates are dropped.
+    """
+    if not results:
+        return []
+
+    scored = [(a, a.get("_rel", 0.0)) for a in results]
+    top = scored[0][1]
+
+    # Direct N-modda lookups carry _rel = 1.0 → all kept
+    keep = [
+        a for a, rel in scored
+        if rel >= _REL_ABS and rel >= top * _REL_REL
+    ]
+    # Always show at least the single best match
+    return keep or [results[0]]
 
 
 def _extract_sources(articles: list[dict]) -> list[dict]:
@@ -385,9 +424,15 @@ async def stream_rag_response(
     history = history or []
 
     search_q = _build_search_query(query, history)
-    results = search(search_q, k)
-    sources = _extract_sources(results)
-    contacts = _get_contacts(results, search_q)
+    results = search(search_q, k)  # full set → LLM context (recall)
+
+    # Display only genuinely relevant articles as sources/contacts —
+    # no fixed count. Keep those above a relevance threshold; if a clearly
+    # dominant match exists, show just it.
+    display = _relevant_subset(results)
+
+    sources = _extract_sources(display)
+    contacts = _get_contacts(display, search_q)
 
     if not results:
         for i in range(0, len(_NO_RESULTS_MSG), 80):

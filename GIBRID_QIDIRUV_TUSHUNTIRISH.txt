@@ -1,0 +1,189 @@
+==========================================================================
+BeLegal — GIBRID MA'LUMOT QIDIRUV TIZIMI (HYBRID RETRIEVAL)
+Texnik tushuntirish — taqdimot (PPT) tayyorlash uchun
+==========================================================================
+
+[GPT uchun ko'rsatma: Quyidagi materialni rasmiy ilmiy uslubda, Bitiruv
+Malakaviy Ishi taqdimoti (PowerPoint) uchun slaydlarga aylantiring. Har
+bir bo'limni alohida slayd sifatida ifodalang, sarlavhalar, qisqa tezislar
+va sxemalar tavsiyalari bilan.]
+
+
+--------------------------------------------------------------------------
+1. MUAMMONING QO'YILISHI
+--------------------------------------------------------------------------
+BeLegal — O'zbekiston Respublikasi qonunchiligi (Konstitutsiya, Jinoyat,
+Mehnat, Fuqarolik va Ma'muriy javobgarlik kodekslari — jami 2148 ta modda)
+asosida foydalanuvchi savollariga javob beruvchi sun'iy intellektga
+asoslangan huquqiy yordamchi tizim.
+
+Tizim RAG (Retrieval-Augmented Generation — qidiruv bilan boyitilgan
+generatsiya) arxitekturasida ishlaydi:
+  1) Foydalanuvchi savoli bo'yicha tegishli qonun moddalari TOPILADI;
+  2) Topilgan moddalar katta til modeliga (LLM) kontekst sifatida beriladi;
+  3) LLM faqat shu moddalar asosida aniq, manbaga asoslangan javob yaratadi.
+
+Tizimning aniqligi to'g'ridan-to'g'ri QIDIRUV bosqichiga bog'liq: agar
+noto'g'ri moddalar topilsa, LLM ham noto'g'ri javob beradi.
+
+
+--------------------------------------------------------------------------
+2. DASTLABKI YECHIM VA UNING KAMCHILIGI (BM25)
+--------------------------------------------------------------------------
+Boshlang'ich versiyada faqat BM25 algoritmi ishlatilgan edi.
+
+BM25 — bu KALIT SO'Z (keyword) bo'yicha qidiruv usuli. U savoldagi so'zlar
+bilan hujjat matnidagi so'zlarning AYNAN mosligini hisoblaydi.
+
+Kamchiligi (ayniqsa o'zbek tili uchun):
+  • O'zbek tili AGGLUTINATIV — so'zlarga ko'plab qo'shimchalar qo'shiladi.
+    Masalan: "prezident", "prezidenti", "prezidentlikka" — bir xil o'zak,
+    lekin BM25 ularni boshqa-boshqa so'z deb hisoblaydi.
+  • MA'NO mosligini tushunmaydi. Masalan, foydalanuvchi "nomzodga talab"
+    deb so'rasa, lekin qonun matnida "lavozimiga saylanishi mumkin" deb
+    yozilgan bo'lsa — so'zlar har xil, BM25 bog'lanishni topa olmaydi.
+
+Natija: ko'p hollarda kerakli modda topilmasdan, "ma'lumot topilmadi"
+javobi qaytarilardi.
+
+
+--------------------------------------------------------------------------
+3. TANLANGAN YECHIM: GIBRID QIDIRUV (HYBRID RETRIEVAL)
+--------------------------------------------------------------------------
+Muammoni hal qilish uchun IKKI XIL qidiruv usuli birlashtirildi:
+
+A) BM25 (leksik / kalit so'z qidiruvi)
+   — Aniq so'zlar va modda raqamlari uchun kuchli.
+   — "106-modda" kabi aniq murojaatlarni darhol topadi.
+
+B) SEMANTIK QIDIRUV (embeddings — vektorli ifodalash)
+   — Har bir modda matni OpenAI "text-embedding-3-small" modeli orqali
+     1536 o'lchamli son vektoriga (embedding) aylantiriladi.
+   — Vektor — bu matnning MA'NOSINI raqamlar shaklida ifodalaydi.
+   — Ma'no jihatdan yaqin matnlar vektor fazosida bir-biriga yaqin
+     joylashadi.
+   — Shu sababli "nomzodga talab" so'rovi "lavozimiga saylanishi mumkin"
+     matnini SO'ZLAR HAR XIL bo'lsa ham, MA'NO orqali topadi.
+
+Bu yondashuv na sinonimlar lug'atini, na modelni qayta o'qitishni
+(fine-tuning) talab qiladi.
+
+
+--------------------------------------------------------------------------
+4. IKKI NATIJANI BIRLASHTIRISH: RRF (Reciprocal Rank Fusion)
+--------------------------------------------------------------------------
+BM25 va semantik qidiruv har biri o'z reytingini (eng mos moddalar
+ro'yxatini) beradi. Ularni adolatli birlashtirish uchun RRF — Teskari
+Reyting Birlashtirish usuli qo'llaniladi.
+
+RRF formulasi: har bir modda uchun ball = Σ 1 / (k + reyting_o'rni)
+  (bu yerda k — barqarorlik konstantasi, odatda 60)
+
+Afzalligi:
+  • Ikki usulning ballarini bir o'lchovga keltirish (normalizatsiya)
+    shart emas — faqat O'RIN (rank) muhim.
+  • Ikkala usulda ham yuqori o'rinda turgan modda eng yuqori umumiy
+    ballni oladi.
+
+Qo'shimcha qoida: agar savolda aniq modda raqami ko'rsatilsa
+(masalan "106-modda"), u to'g'ridan-to'g'ri, eng yuqori ustuvorlik bilan
+qaytariladi.
+
+
+--------------------------------------------------------------------------
+5. SAMARADORLIK VA OPTIMALLASHTIRISH
+--------------------------------------------------------------------------
+  • Barcha 2148 ta moddaning embeddinglari BIR MARTA hisoblanadi va
+    diskka (.npz fayl, ~13 MB) saqlanadi (keshlash).
+  • Tizim qayta ishga tushganda embeddinglar qaytadan hisoblanmaydi —
+    keshdan o'qiladi (tezkor ishga tushish).
+  • Agar qonun ma'lumotlari o'zgarsa, tizim buni avtomatik aniqlaydi
+    (imzo / signature orqali) va embeddinglarni yangilaydi.
+  • Bir martalik indekslash narxi: ~1 sent (AQSh senti).
+  • Har bir savol uchun faqat savolning o'zi vektorlashtiriladi —
+    bu juda tez va arzon.
+  • Qidiruvda topiladigan moddalar soni k = 6 ga oshirildi (avval 4 edi) —
+    bu LLMga ko'proq kontekst berib, javob to'liqligini oshiradi.
+
+
+--------------------------------------------------------------------------
+6. NIMA UCHUN FINE-TUNING TANLANMADI (asoslash)
+--------------------------------------------------------------------------
+Muqobil variant sifatida LLMni mavjud 5 ta kodeks bilan qayta o'qitish
+(fine-tuning) ko'rib chiqildi, ammo rad etildi:
+
+  • Fine-tuning modelga USLUB va FORMATNI o'rgatadi, FAKTLARNI ishonchli
+    yodlata olmaydi — model faktni "to'qib chiqarishi" (hallucination)
+    mumkin. Huquqiy tizim uchun bu xavfli.
+  • Asosiy muammo LLMda emas, QIDIRUVDA edi. Fine-tuning qidiruvni
+    tuzatmaydi — model baribir noto'g'ri kontekst olishi mumkin.
+  • Qonun o'zgarsa, modelni butunlay qayta o'qitish kerak (qimmat, sekin).
+    RAG'da esa shunchaki qayta indekslash kifoya.
+
+Xulosa: huquqiy aniqlik va manbaga asoslanish talab qilingan tizim uchun
+GIBRID RAG yondashuvi fine-tuningdan ustun.
+
+
+--------------------------------------------------------------------------
+7. TAQQOSLASH JADVALI
+--------------------------------------------------------------------------
+Mezon                     | Faqat BM25 | Gibrid (BM25+Embedding) | Fine-tuning
+--------------------------|------------|-------------------------|------------
+Ma'no bo'yicha qidiruv    | Yo'q       | Bor (avtomatik)         | Qisman
+Qo'shimchalar muammosi    | Bor        | Hal qilingan            | Hal qilmaydi
+Faktlar aniqligi/manbasi  | Aniq       | Aniq                    | Ishonchsiz
+Hallucination xavfi       | Yo'q       | Yo'q                    | Bor
+Ma'lumot o'zgarganda      | Qayta indeks| Qayta indeks           | Qayta o'qitish
+Narx                      | 0          | ~1 sent (bir marta)     | Yuqori
+Ishlash murakkabligi      | Past       | O'rta                   | Yuqori
+
+
+--------------------------------------------------------------------------
+8. AMALIY NATIJA (oldin / keyin)
+--------------------------------------------------------------------------
+Savol: "Ishdan asossiz bo'shatilsa nima qilish kerak?"
+  • BM25 (oldin): noto'g'ri moddalar (Konstitutsiya, garov) qaytarildi.
+  • Gibrid (keyin): Mehnat kodeksi 173, 564, 202-moddalar — to'g'ri.
+
+Savol: "106-moddada nima deyilgan?"
+  • BM25 (oldin): topa olmadi.
+  • Gibrid (keyin): tegishli 106-modda darhol topiladi.
+
+Savol: "Prezident lavozimiga qanday talablar?"
+  • BM25 (oldin): aralash, noaniq natijalar.
+  • Gibrid (keyin): Konstitutsiyaning davlat boshqaruviga oid moddalari.
+
+
+--------------------------------------------------------------------------
+9. UMUMIY ARXITEKTURA SXEMASI (slayd uchun tavsiya)
+--------------------------------------------------------------------------
+   Foydalanuvchi savoli
+            │
+            ▼
+   ┌─────────────────────┐
+   │  Savolni tahlil      │
+   │  qilish              │
+   └─────────┬───────────┘
+             │
+      ┌──────┴───────┐
+      ▼              ▼
+  ┌────────┐    ┌──────────────┐
+  │ BM25   │    │ Semantik      │
+  │ (so'z) │    │ (embedding)   │
+  └───┬────┘    └──────┬───────┘
+      │                │
+      └──────┬─────────┘
+             ▼
+     ┌──────────────┐
+     │ RRF birlash- │   + "N-modda" to'g'ridan-to'g'ri lookup
+     │ tirish       │
+     └──────┬───────┘
+            ▼
+   Eng mos 6 ta modda
+            │
+            ▼
+   ┌──────────────────┐
+   │  LLM (OpenAI)    │  → Manbaga asoslangan javob
+   └──────────────────┘
+
+==========================================================================
