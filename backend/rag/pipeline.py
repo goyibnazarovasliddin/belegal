@@ -151,22 +151,68 @@ _NO_RESULTS_MSG = (
 )
 
 
+# Detect "N-modda" / "N modda" / "N-moddada" references in a query
+_MODDA_Q_RE = re.compile(r"(\d+)\s*-?\s*modda", re.IGNORECASE)
+
+
+def _stem(tok: str) -> str:
+    """Crude prefix stemmer for agglutinative Uzbek: 'prezidenti'->'prezid'.
+
+    Lets 'prezident', 'prezidenti', 'prezidentlikka' all collide on a shared
+    prefix so BM25 matches across case suffixes.
+    """
+    return tok[:6] if len(tok) > 6 else tok
+
+
 def _tokenize(text: str) -> list[str]:
     return re.findall(r"\w+", text.lower())
+
+
+def _expand(tokens: list[str]) -> list[str]:
+    """Add stemmed variants alongside raw tokens (keeps exact + fuzzy match)."""
+    out: list[str] = []
+    for t in tokens:
+        out.append(t)
+        s = _stem(t)
+        if s != t:
+            out.append(s)
+    return out
+
+
+def _index_tokens(a: dict) -> list[str]:
+    """Searchable tokens for an article: text + modda number + bob + bolim + document."""
+    raw = (
+        _tokenize(a["text"])
+        + _tokenize(str(a["modda"]))
+        + _tokenize(a.get("bob") or "")
+        + _tokenize(a.get("bolim") or "")
+        + _tokenize(a.get("document") or "")
+    )
+    return _expand(raw)
 
 
 @lru_cache(maxsize=1)
 def _build_index() -> tuple[BM25Okapi, tuple[dict, ...]]:
     articles = get_all_articles()
-    corpus = [_tokenize(a["text"]) for a in articles]
+    corpus = [_index_tokens(a) for a in articles]
     return BM25Okapi(corpus), articles
 
 
 def search(query: str, k: int = 4) -> list[dict]:
     bm25, articles = _build_index()
-    scores = bm25.get_scores(_tokenize(query))
-    top = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:k]
-    return [articles[i] for i in top if scores[i] > 0]
+    scores = bm25.get_scores(_expand(_tokenize(query)))
+    order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+    ranked = [articles[i] for i in order[:k] if scores[i] > 0]
+
+    # Direct "N-modda" lookups always win — prepend them, deduped
+    nums = set(_MODDA_Q_RE.findall(query))
+    if nums:
+        direct = [a for a in articles if str(a["modda"]) in nums]
+        seen = {a["id"] for a in direct}
+        merged = direct + [a for a in ranked if a["id"] not in seen]
+        return merged[: max(k, len(direct))]
+
+    return ranked
 
 
 def _extract_sources(articles: list[dict]) -> list[dict]:
